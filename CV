@@ -1,0 +1,626 @@
+-- LocalScript (execute with your executor)
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ContentProvider = game:GetService("ContentProvider")
+local RunService = game:GetService("RunService")
+local Chat = game:GetService("Chat")
+local StarterGui = game:GetService("StarterGui")
+
+local localPlayer = Players.LocalPlayer
+
+---------------------------------------------------------------------
+-- ROLES (username → role)
+---------------------------------------------------------------------
+
+local ROLES = {
+    ["unicornman_27"] = "Owner",  -- you
+    -- ["FriendAdminName"] = "Admin",
+    -- ["FriendUserName"]  = "User",
+}
+
+local CROWN_ASSET_ID = "rbxassetid://11767039004"
+local FAR_HIDE_DISTANCE = 60 -- studs; beyond this, text is hidden
+
+local function typewriter(label, fullText, delayTime)
+    label.Text = ""
+    for i = 1, #fullText do
+        label.Text = string.sub(fullText, 1, i)
+        task.wait(delayTime)
+    end
+end
+
+---------------------------------------------------------------------
+-- LOADING SCREEN
+---------------------------------------------------------------------
+
+local loadingGui = Instance.new("ScreenGui")
+loadingGui.Name = "LoadingScreen"
+loadingGui.ResetOnSpawn = false
+loadingGui.DisplayOrder = 999
+loadingGui.IgnoreGuiInset = true
+loadingGui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+local bg = Instance.new("Frame")
+bg.Size = UDim2.new(1, 0, 1, 0)
+bg.BackgroundColor3 = Color3.new(0, 0, 0)
+bg.BorderSizePixel = 0
+bg.Parent = loadingGui
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(0, 600, 0, 60)
+titleLabel.Position = UDim2.new(0.5, -300, 0.35, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "LOADING..."
+titleLabel.TextColor3 = Color3.fromRGB(180, 0, 255)
+titleLabel.TextSize = 36
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextTransparency = 1
+titleLabel.Parent = bg
+
+local percentLabel = Instance.new("TextLabel")
+percentLabel.Size = UDim2.new(0, 500, 0, 24)
+percentLabel.Position = UDim2.new(0.5, -250, 0.58, 0)
+percentLabel.BackgroundTransparency = 1
+percentLabel.Text = "0%"
+percentLabel.TextColor3 = Color3.fromRGB(200, 150, 255)
+percentLabel.TextSize = 14
+percentLabel.Font = Enum.Font.Gotham
+percentLabel.TextTransparency = 1
+percentLabel.Parent = bg
+
+local barBg = Instance.new("Frame")
+barBg.Size = UDim2.new(0, 500, 0, 12)
+barBg.Position = UDim2.new(0.5, -250, 0.55, 0)
+barBg.BackgroundColor3 = Color3.fromRGB(30, 0, 50)
+barBg.BorderSizePixel = 0
+barBg.Parent = bg
+
+local barBgCorner = Instance.new("UICorner")
+barBgCorner.CornerRadius = UDim.new(0, 6)
+barBgCorner.Parent = barBg
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(140, 0, 255)
+barFill.BorderSizePixel = 0
+barFill.Parent = barBg
+
+local barFillCorner = Instance.new("UICorner")
+barFillCorner.CornerRadius = UDim.new(0, 6)
+barFillCorner.Parent = barFill
+
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://17422156627"
+sound.Volume = 0.8
+sound.Looped = true
+sound.Parent = loadingGui
+sound:Play()
+
+local function animateBar(duration)
+    local steps = 100
+    local stepTime = duration / steps
+    for i = 1, steps do
+        local pct = i / steps
+        TweenService:Create(
+            barFill,
+            TweenInfo.new(stepTime, Enum.EasingStyle.Linear),
+            { Size = UDim2.new(pct, 0, 1, 0) }
+        ):Play()
+        percentLabel.Text = math.floor(pct * 100) .. "%"
+        task.wait(stepTime)
+    end
+end
+
+TweenService:Create(titleLabel, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
+TweenService:Create(percentLabel, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
+
+---------------------------------------------------------------------
+-- GOKU TP
+---------------------------------------------------------------------
+
+local function gokuTeleportTo(targetPlr)
+    if not targetPlr or targetPlr == localPlayer then return end
+
+    local localChar = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    local targetChar = targetPlr.Character
+    if not targetChar then return end
+
+    local hrp = localChar:FindFirstChild("HumanoidRootPart")
+    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+    if not hrp or not targetHRP then return end
+
+    local targetCFrame = targetHRP.CFrame * CFrame.new(0, 0, -3)
+    TweenService:Create(
+        hrp,
+        TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { CFrame = targetCFrame }
+    ):Play()
+end
+
+---------------------------------------------------------------------
+-- DISTANCE-BASED TEXT VISIBILITY
+---------------------------------------------------------------------
+
+local function hookDistanceVisibility(billboard, label)
+    local head = billboard.Adornee
+    if not head then return end
+
+    RunService.RenderStepped:Connect(function()
+        if not head.Parent or not billboard.Parent then
+            return
+        end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        local dist = (cam.CFrame.Position - head.Position).Magnitude
+        if dist > FAR_HIDE_DISTANCE then
+            label.TextTransparency = 1
+            label.TextStrokeTransparency = 1
+        else
+            label.TextTransparency = 0
+            label.TextStrokeTransparency = 0.35
+        end
+    end)
+end
+
+---------------------------------------------------------------------
+-- TAGS (Owner / AR ADMIN / USER)
+---------------------------------------------------------------------
+
+local function createTag(plr, character)
+    local role = ROLES[plr.Name]
+    if not role then
+        return
+    end
+
+    local head = character:FindFirstChild("Head") or character:WaitForChild("Head", 5)
+    if not head then return end
+
+    local existing = head:FindFirstChild("RoleTag")
+    if existing then existing:Destroy() end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "RoleTag"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 420, 0, 70)
+    billboard.StudsOffset = Vector3.new(0, 3.1, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.BorderSizePixel = 0
+    container.Parent = billboard
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 14)
+    corner.Parent = container
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 3
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = container
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.Padding = UDim.new(0, 10)
+    layout.Parent = container
+
+    local crownHolder = Instance.new("Frame")
+    crownHolder.Size = UDim2.new(0, 44, 1, -10)
+    crownHolder.BackgroundTransparency = 1
+    crownHolder.Parent = container
+
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, -44, 1, -10)
+    label.Font = Enum.Font.GothamBold
+    label.TextScaled = true
+    label.TextStrokeTransparency = 0.35
+    label.TextStrokeColor3 = Color3.new(0, 0, 0)
+    label.Parent = container
+
+    local click = Instance.new("TextButton")
+    click.BackgroundTransparency = 1
+    click.Text = ""
+    click.Size = UDim2.new(1, 0, 1, 0)
+    click.Parent = container
+    click.MouseButton1Click:Connect(function()
+        gokuTeleportTo(plr)
+    end)
+
+    if role == "Owner" then
+        container.BackgroundColor3 = Color3.new(1, 1, 1)
+        stroke.Color = Color3.fromRGB(180, 0, 255)
+        label.TextColor3 = Color3.fromRGB(140, 0, 255)
+
+        local crown = Instance.new("ImageLabel")
+        crown.Size = UDim2.new(0, 38, 0, 38)
+        crown.Position = UDim2.new(0.5, -19, 0.5, -19)
+        crown.BackgroundTransparency = 1
+        crown.Image = CROWN_ASSET_ID
+        crown.Parent = crownHolder
+
+        task.spawn(function()
+            typewriter(label, "I own yall", 0.04)
+        end)
+
+    else
+        container.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        stroke.Color = Color3.fromRGB(255, 0, 0)
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+        if role == "Admin" then
+            label.Text = "AR ADMIN"
+        else
+            label.Text = "USER"
+        end
+
+        crownHolder.Size = UDim2.new(0, 0, 1, -10)
+        label.Size = UDim2.new(1, 0, 1, -10)
+    end
+
+    hookDistanceVisibility(billboard, label)
+end
+
+---------------------------------------------------------------------
+-- FREEZE + FAKE CHAT (only used via cmd bar)
+---------------------------------------------------------------------
+
+local frozen = {} -- [Player] = true/false
+
+local function setFrozen(plr, state)
+    local char = plr.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    frozen[plr] = state
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.Anchored = state
+        end
+    end
+
+    if state then
+        humanoid.WalkSpeed = 0
+        humanoid.JumpPower = 0
+    else
+        humanoid.WalkSpeed = 16
+        humanoid.JumpPower = 50
+    end
+end
+
+local function getTargetsFromArg(arg)
+    arg = string.lower(arg)
+    local targets = {}
+
+    if arg == "all" then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if ROLES[plr.Name] then
+                table.insert(targets, plr)
+            end
+        end
+    else
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if string.sub(string.lower(plr.Name), 1, #arg) == arg then
+                table.insert(targets, plr)
+            end
+        end
+    end
+
+    return targets
+end
+
+local function fakeSay(targetPlr, message)
+    local char = targetPlr.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    -- bubble over head
+    Chat:Chat(head, message, Enum.ChatColor.White)
+
+    -- fake line in chat window (your client only)
+    pcall(function()
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = targetPlr.Name .. ": " .. message;
+            Color = Color3.new(1, 1, 1);
+        })
+    end)
+end
+
+---------------------------------------------------------------------
+-- AK-STYLE COMMAND BAR UI (FREEZE + SAY ONLY)
+---------------------------------------------------------------------
+
+local cmdGui = Instance.new("ScreenGui")
+cmdGui.Name = "AR_CommandBar"
+cmdGui.ResetOnSpawn = false
+cmdGui.DisplayOrder = 1000
+cmdGui.IgnoreGuiInset = true
+cmdGui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+local commandFrame = Instance.new("Frame")
+commandFrame.Parent = cmdGui
+commandFrame.Size = UDim2.new(0.35, 0, 0.07, 0)
+commandFrame.Position = UDim2.new(0.5, 0, 0.8, 0)
+commandFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+commandFrame.BorderSizePixel = 0
+commandFrame.BackgroundTransparency = 0.2
+commandFrame.ClipsDescendants = true
+commandFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+
+local cornerCF = Instance.new("UICorner")
+cornerCF.CornerRadius = UDim.new(0, 15)
+cornerCF.Parent = commandFrame
+
+local shadow = Instance.new("ImageLabel")
+shadow.Parent = commandFrame
+shadow.Size = UDim2.new(1, 15, 1, 15)
+shadow.Position = UDim2.new(0, -10, 0, -10)
+shadow.BackgroundTransparency = 1
+shadow.Image = "rbxassetid://1316045217"
+shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+shadow.ImageTransparency = 0.6
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+
+local logoLabel = Instance.new("TextLabel")
+logoLabel.Parent = commandFrame
+logoLabel.Size = UDim2.new(0.2, 0, 1, 0)
+logoLabel.Position = UDim2.new(0, 5, 0, 0)
+logoLabel.BackgroundTransparency = 1
+logoLabel.Text = "AR cmdbar"
+logoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+logoLabel.Font = Enum.Font.GothamBold
+logoLabel.TextScaled = true
+
+local commandBar = Instance.new("TextBox")
+commandBar.Parent = commandFrame
+commandBar.Size = UDim2.new(0.75, 0, 1, 0)
+commandBar.Position = UDim2.new(0.25, 0, 0, 0)
+commandBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+commandBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+commandBar.PlaceholderText = "freeze / say cmds only"
+commandBar.Text = ""
+commandBar.Font = Enum.Font.GothamBold
+commandBar.TextSize = 18
+commandBar.BorderSizePixel = 0
+
+local textCorner = Instance.new("UICorner")
+textCorner.CornerRadius = UDim.new(0, 10)
+textCorner.Parent = commandBar
+
+-- Only owner can use the bar (others still see it but no effect)
+local function handleCommand(text)
+    if ROLES[localPlayer.Name] ~= "Owner" then
+        return
+    end
+
+    text = text:lower()
+
+    local parts = {}
+    for token in string.gmatch(text, "%S+") do
+        table.insert(parts, token)
+    end
+    local cmd = parts[1]
+    local arg1 = parts[2] or ""
+
+    if cmd == "freeze" and arg1 ~= "" then
+        -- freeze <name|all>
+        for _, plr in ipairs(getTargetsFromArg(arg1)) do
+            setFrozen(plr, true)
+        end
+
+    elseif cmd == "say" and arg1 ~= "" then
+        -- say <name> <message...>
+        local targetName = arg1
+        local msg = table.concat(parts, " ", 3)
+        if msg ~= "" then
+            local targets = getTargetsFromArg(targetName)
+            for _, plr in ipairs(targets) do
+                fakeSay(plr, msg)
+            end
+        end
+    end
+end
+
+commandBar.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local text = commandBar.Text
+        commandBar.Text = ""
+        if text ~= "" then
+            handleCommand(text)
+        end
+    end
+end)
+
+---------------------------------------------------------------------
+-- PLAYER HOOKS
+---------------------------------------------------------------------
+
+local function onCharacterAdded(plr, character)
+    task.wait(1)
+    createTag(plr, character)
+end
+
+local function setupPlayer(plr)
+    if plr.Character then
+        onCharacterAdded(plr, plr.Character)
+    end
+    plr.CharacterAdded:Connect(function(char)
+        onCharacterAdded(plr, char)
+    end)
+end
+
+---------------------------------------------------------------------
+-- RUN
+---------------------------------------------------------------------
+
+task.spawn(function()
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+
+    ContentProvider:PreloadAsync({ "rbxassetid://6056177578" })
+
+    animateBar(3.5)
+    task.wait(0.4)
+
+    TweenService:Create(sound, TweenInfo.new(1), {Volume = 0}):Play()
+    TweenService:Create(bg, TweenInfo.new(1.2, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(titleLabel, TweenInfo.new(0.8), {TextTransparency = 1}):Play()
+    TweenService:Create(percentLabel, TweenInfo.new(0.8), {TextTransparency = 1}):Play()
+    TweenService:Create(barBg, TweenInfo.new(0.8), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(barFill, TweenInfo.new(0.8), {BackgroundTransparency = 1}):Play()
+
+    task.wait(1.5)
+    sound:Stop()
+    loadingGui:Destroy()
+end)
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    setupPlayer(plr)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+
+print("LocalPlayer =", localPlayer.Name)
+-- Create a ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+screenGui.ResetOnSpawn = false
+
+-- Create the Frame to hold the command bar and logo
+local commandFrame = Instance.new("Frame")
+commandFrame.Parent = screenGui
+commandFrame.Size = UDim2.new(0.35, 0, 0.07, 0)  -- Adjusted width to fit better
+commandFrame.Position = UDim2.new(0.5, 0, 0.8, 0)  -- Position slightly higher
+commandFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+commandFrame.BorderSizePixel = 0
+commandFrame.BackgroundTransparency = 0.2
+commandFrame.ClipsDescendants = true
+commandFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+
+-- Add corner curve to the Frame
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 15)  -- Set curve radius
+corner.Parent = commandFrame
+
+-- Add shadow effect
+local shadow = Instance.new("ImageLabel")
+shadow.Parent = commandFrame
+shadow.Size = UDim2.new(1, 15, 1, 15)
+shadow.Position = UDim2.new(0, -10, 0, -10)
+shadow.BackgroundTransparency = 1
+shadow.Image = "rbxassetid://1316045217"  -- Shadow image
+shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+shadow.ImageTransparency = 0.6  -- Slightly transparent shadow
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+
+-- Add the AK cmdbar logo
+local logoLabel = Instance.new("TextLabel")
+logoLabel.Parent = commandFrame
+logoLabel.Size = UDim2.new(0.2, 0, 1, 0)  -- Small size at the left
+logoLabel.Position = UDim2.new(0, 5, 0, 0)
+logoLabel.BackgroundTransparency = 1
+logoLabel.Text = "AK cmdbar"
+logoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+logoLabel.Font = Enum.Font.GothamBold
+logoLabel.TextSize = 12  -- Adjusted text size to fit better
+logoLabel.TextScaled = true  -- Allow the text to scale
+
+-- Create the Command Bar (TextBox)
+local commandBar = Instance.new("TextBox")
+commandBar.Parent = commandFrame
+commandBar.Size = UDim2.new(0.75, 0, 1, 0)  -- Adjusted width to fit the new frame size
+commandBar.Position = UDim2.new(0.25, 0, 0, 0)  -- Centered next to the logo
+commandBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+commandBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+commandBar.PlaceholderText = "Enter command..."
+commandBar.Text = ""
+commandBar.Font = Enum.Font.GothamBold
+commandBar.TextSize = 18
+commandBar.BorderSizePixel = 0
+
+-- Add curve to the TextBox as well
+local textCorner = Instance.new("UICorner")
+textCorner.CornerRadius = UDim.new(0, 10)  -- Curve only
+textCorner.Parent = commandBar
+
+-- Commands Table
+local cmds = {
+    ["jobidjoiner"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Jobidjoiner",
+    ["bring"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/Bring",
+    ["antilag"] = "https://raw.githubusercontent.com/xSejker/AntilagFixedd/main/README.md",
+    ["antibang"] = "https://pastebin.com/raw/5iSqpqf6",
+    ["chaoshub"] = "https://raw.githubusercontent.com/Vcsk/AstralHub/main/Loader.lua",
+    ["warn all"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Warnall",
+    ["aimbot"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/aimbot",
+    ["warnpower"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Warns",
+    ["protonadmin"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/protonadmin",
+    ["triviabooth"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/triviabooth",
+    ["chatbot"] = "https://raw.githubusercontent.com/Guerric9018/chatbothub/main/ChatbotHub.lua",
+    ["givepower"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/givepower",
+    ["walkonwalls"] = "https://raw.githubusercontent.com/sinret/rbxscript.com-scripts-reuploads-/main/WalkOnWalls",
+    ["cmdbar"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Cmdbar",
+    ["ad"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/Ad",
+    ["chatquiz"] = "https://raw.githubusercontent.com/Damian-11/quizbot/master/quizbot.luau",
+    ["shiftlock"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Shiftlock",
+    ["nofriends"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Nofriends",
+    ["invis"] = "https://raw.githubusercontent.com/GhostPlayer352/Test4/main/Invisible%20Gui",
+    ["serverhopmost"] = "https://raw.githubusercontent.com/Alikhammass/emoji/main/Serverhopmost",
+    ["serverhoplow"] = "https://raw.githubusercontent.com/Alikhammass/emoji/main/Serverhoplow",
+    ["bbhub"] = "https://raw.githubusercontent.com/Salmon-B0T/SalmonHub/main/SalmonHub.lua",
+    ["getoutmyinv"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/getoutmyinv",
+    ["platespin"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/Platespin",
+    ["kronefling"] = "https://raw.githubusercontent.com/Alikhammass/antifling./main/loopfling",
+    ["gimmetools"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/gimmetools",
+    ["oof"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/oof",
+    ["mcfling"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Micupfling",
+    ["cmds"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/cmds",
+    ["antilog"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/antilogger",
+    ["donttouchme"] = "https://raw.githubusercontent.com/0Ben1/fe./main/Fling%20GUI",
+    ["serverhop"] = "https://raw.githubusercontent.com/Alikhammass/emoji/main/serverhop",
+    ["afk"] = "https://raw.githubusercontent.com/2dgeneralspam1/scripts-and-stuff/master/scripts/LoadstringypVvhJBq4QNz",
+    ["ftao"] = "https://raw.githubusercontent.com/BlizTBr/scripts/main/FTAP.lua",
+    ["iy"] = "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source",
+    ["emoji"] = "https://raw.githubusercontent.com/Alikhammass/emoji/main/emo",
+    ["f3x"] = "https://raw.githubusercontent.com/Alikhammass/antifling./main/F3x",
+    ["f3x sun"] = "https://raw.githubusercontent.com/Alikhammass/antifling./refs/heads/main/F3x%20Sun",
+    ["f3x house"] = "https://raw.githubusercontent.com/Alikhammass/antifling./refs/heads/main/F3x%20house",
+    ["f3x triangle"] = "https://raw.githubusercontent.com/Alikhammass/antifling./refs/heads/main/F3x%20Traingle",
+    ["f3x ufo"] = "https://raw.githubusercontent.com/Alikhammass/antifling./refs/heads/main/F3x%20UFO",
+    ["bypasser"] = "https://raw.githubusercontent.com/shadow62x/catbypass/main/upfix",
+    ["bladeball"] = "https://raw.githubusercontent.com/FFJ1/Roblox-Exploits/main/scripts/Loader.lua",
+    ["nonofling"] = "https://raw.githubusercontent.com/Alikhammass/antifling./main/Antifling",
+    ["infect"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/refs/heads/main/Infect",
+    ["swordreach"] = "https://raw.githubusercontent.com/Alikhammass/emoji/main/swordreach",
+    ["byebye all"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/quickfling",
+    ["pltiger"] = "https://raw.githubusercontent.com/H17S32/Tiger_Admin/main/Tiger%20Admin%203.0",
+    ["fps"] = "https://raw.githubusercontent.com/insanedude59/MiscReleases/main/Roblox/UWPFPSBooster.lua",
+    ["rejoin"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/rejoin",
+    ["walkonvoid"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/Walkonvoid",
+    ["hkill"] = "https://raw.githubusercontent.com/Alikhammass/MyAdmin/main/Handle%20kills"
+}
+
+-- Command Bar Functionality
+commandBar.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local command = commandBar.Text:lower()
+        commandBar.Text = ""
+
+        local url = cmds[command]
+        if url then
+            loadstring(game:HttpGet(url))()
+        else
+            print("Command not recognized.")
+        end
+    end
+end)
