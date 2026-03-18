@@ -623,4 +623,896 @@ commandBar.FocusLost:Connect(function(enterPressed)
             print("Command not recognized.")
         end
     end
+-- Ash Hub | Full GUI
+-- Same style as key system: transparent + purple outline
+-- Press RightShift to show/hide
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- Audio
+local Sound = Instance.new("Sound")
+Sound.SoundId = "rbxassetid://136974179670066"
+Sound.Volume = 0.4
+Sound.Looped = true
+Sound.Parent = workspace
+Sound:Play()
+
+-- Theme (identical to key system)
+local Theme = {
+    BG           = Color3.fromRGB(0, 0, 0),
+    Secondary    = Color3.fromRGB(0, 0, 0),
+    Accent       = Color3.fromRGB(130, 60, 220),
+    AccentBright = Color3.fromRGB(155, 90, 245),
+    Success      = Color3.fromRGB(34, 197, 94),
+    Error        = Color3.fromRGB(239, 68, 68),
+    Warning      = Color3.fromRGB(251, 191, 36),
+    Text         = Color3.fromRGB(255, 255, 255),
+    TextDim      = Color3.fromRGB(200, 185, 220),
+    Border       = Color3.fromRGB(130, 60, 220),
+    BorderDim    = Color3.fromRGB(80, 50, 120),
+    ToggleON     = Color3.fromRGB(130, 60, 220),
+    ToggleOFF    = Color3.fromRGB(30, 15, 55),
+}
+
+local Fnt     = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Medium, Enum.FontStyle.Normal)
+local FntBold = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold,   Enum.FontStyle.Normal)
+
+local function New(cls, props)
+    local i = Instance.new(cls)
+    for k,v in pairs(props or {}) do i[k] = v end
+    return i
+end
+local function Tween(obj, t, props)
+    TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+end
+local function Corner(r, p)
+    local c = New("UICorner", {CornerRadius = UDim.new(0, r)})
+    c.Parent = p
+    return c
+end
+local function Stroke(col, thick, p)
+    local s = New("UIStroke", {Color=col, Thickness=thick, ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
+    s.Parent = p
+    return s
+end
+
+-- State
+local State = { AimbotFOV=150, HitChance=100, Speed=50, FlySpd=50, SpamText="Ash Hub 🔥", SpamIdx=0 }
+local Connections = {}
+local CurrentTab = "Player"
+local FlyActive = false
+local FlyMode = "Normal"
+local FlyConn, FlyBV, FlyBG
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "AshESP"
+ESPFolder.Parent = Workspace
+
+-- ============================================================
+-- GUI ROOT
+-- ============================================================
+local Gui = New("ScreenGui", {
+    Name="AshHub", ResetOnSpawn=false,
+    ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
+    Parent = gethui and gethui() or LocalPlayer:WaitForChild("PlayerGui")
+})
+
+-- Main Window
+local Win = New("Frame", {
+    Size=UDim2.new(0,570,0,420),
+    Position=UDim2.new(0.5,-285,0.5,-210),
+    BackgroundColor3=Theme.BG,
+    BackgroundTransparency=0.35,
+    BorderSizePixel=0,
+    Parent=Gui
+})
+Corner(12, Win)
+local WinStroke = Stroke(Theme.Border, 2, Win)
+
+-- Top Bar
+local TopBar = New("Frame", {
+    Size=UDim2.new(1,0,0,42),
+    BackgroundColor3=Theme.Secondary,
+    BackgroundTransparency=0.5,
+    BorderSizePixel=0,
+    Parent=Win
+})
+Corner(12, TopBar)
+-- Cover bottom rounded corners of topbar
+New("Frame",{Size=UDim2.new(1,0,0,12),Position=UDim2.new(0,0,1,-12),BackgroundColor3=Theme.Secondary,BackgroundTransparency=0.5,BorderSizePixel=0,Parent=TopBar})
+-- Purple line under topbar
+New("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),BackgroundColor3=Theme.Border,BorderSizePixel=0,Parent=TopBar})
+
+-- Title dot
+local Dot = New("Frame",{Size=UDim2.new(0,9,0,9),Position=UDim2.new(0,14,0.5,-4),BackgroundColor3=Theme.AccentBright,BorderSizePixel=0,ZIndex=2,Parent=TopBar})
+Corner(99, Dot)
+
+New("TextLabel",{Size=UDim2.new(0,160,1,0),Position=UDim2.new(0,28,0,0),BackgroundTransparency=1,Text="✦  Ash Hub",FontFace=FntBold,TextSize=16,TextColor3=Theme.Text,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2,Parent=TopBar})
+New("TextLabel",{Size=UDim2.new(0,140,1,0),Position=UDim2.new(0,122,0,0),BackgroundTransparency=1,Text="v2.0 | RightShift to hide",FontFace=Fnt,TextSize=10,TextColor3=Theme.TextDim,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2,Parent=TopBar})
+
+-- Close / Min
+local function TopBtn(txt, xoff, col)
+    local b = New("TextButton",{Size=UDim2.new(0,26,0,26),Position=UDim2.new(1,xoff,0.5,-13),BackgroundColor3=col,BorderSizePixel=0,Text=txt,FontFace=FntBold,TextSize=13,TextColor3=Theme.Text,AutoButtonColor=false,ZIndex=5,Parent=TopBar})
+    Corner(6,b); return b
+end
+local CloseBtn = TopBtn("✕", -36, Theme.Error)
+local MinBtn   = TopBtn("−", -68, Theme.Warning)
+
+local minimized = false
+CloseBtn.MouseButton1Click:Connect(function() Gui:Destroy() end)
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    Tween(Win, 0.3, {Size = minimized and UDim2.new(0,570,0,42) or UDim2.new(0,570,0,420)})
 end)
+
+-- Sidebar
+local Sidebar = New("Frame",{
+    Size=UDim2.new(0,108,1,-42),
+    Position=UDim2.new(0,0,0,42),
+    BackgroundColor3=Theme.Secondary,
+    BackgroundTransparency=0.55,
+    BorderSizePixel=0,
+    Parent=Win
+})
+New("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),BackgroundColor3=Theme.Border,BorderSizePixel=0,Parent=Sidebar})
+New("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,4),Parent=Sidebar})
+New("UIPadding",{PaddingTop=UDim.new(0,8),PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,6),Parent=Sidebar})
+
+-- Content
+local Content = New("Frame",{
+    Size=UDim2.new(1,-110,1,-42),
+    Position=UDim2.new(0,110,0,42),
+    BackgroundTransparency=1,
+    BorderSizePixel=0,
+    Parent=Win
+})
+
+-- Tabs
+local Tabs = {"Player","Fly","Combat","Visuals","World","Misc"}
+local TabIcons = {Player="👤",Fly="🚀",Combat="⚔️",Visuals="👁",World="🌍",Misc="⚙️"}
+local TabPages = {}
+local TabBtns = {}
+
+local function MakeTabBtn(name, order)
+    local b = New("TextButton",{
+        Size=UDim2.new(1,0,0,32),
+        BackgroundColor3=Theme.ToggleOFF,
+        BackgroundTransparency=0.4,
+        BorderSizePixel=0,
+        Text=TabIcons[name].." "..name,
+        FontFace=Fnt, TextSize=11,
+        TextColor3=Theme.TextDim,
+        AutoButtonColor=false,
+        LayoutOrder=order,
+        Parent=Sidebar
+    })
+    Corner(8,b); TabBtns[name]=b; return b
+end
+
+local function MakePage(name)
+    local p = New("ScrollingFrame",{
+        Size=UDim2.new(1,-8,1,-8),
+        Position=UDim2.new(0,4,0,4),
+        BackgroundTransparency=1,
+        BorderSizePixel=0,
+        ScrollBarThickness=3,
+        ScrollBarImageColor3=Theme.Border,
+        CanvasSize=UDim2.new(0,0,0,0),
+        AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        Visible=false,
+        Parent=Content
+    })
+    New("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,5),Parent=p})
+    New("UIPadding",{PaddingTop=UDim.new(0,4),PaddingLeft=UDim.new(0,4),PaddingRight=UDim.new(0,8),Parent=p})
+    TabPages[name]=p; return p
+end
+
+local function SwitchTab(name)
+    CurrentTab=name
+    for n,pg in pairs(TabPages) do pg.Visible=(n==name) end
+    for n,b in pairs(TabBtns) do
+        if n==name then Tween(b,0.15,{BackgroundColor3=Theme.ToggleON,BackgroundTransparency=0,TextColor3=Theme.Text})
+        else Tween(b,0.15,{BackgroundColor3=Theme.ToggleOFF,BackgroundTransparency=0.4,TextColor3=Theme.TextDim}) end
+    end
+end
+
+for i,name in ipairs(Tabs) do
+    MakeTabBtn(name,i); MakePage(name)
+    TabBtns[name].MouseButton1Click:Connect(function() SwitchTab(name) end)
+end
+
+-- ============================================================
+-- UI COMPONENT BUILDERS
+-- ============================================================
+
+local function Section(page, title)
+    local f = New("Frame",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,LayoutOrder=#page:GetChildren(),Parent=page})
+    New("TextLabel",{Size=UDim2.new(1,-4,1,0),BackgroundTransparency=1,Text="  "..title,FontFace=FntBold,TextSize=11,TextColor3=Theme.Accent,TextXAlignment=Enum.TextXAlignment.Left,Parent=f})
+    New("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),BackgroundColor3=Theme.BorderDim,BorderSizePixel=0,Parent=f})
+end
+
+local function Toggle(page, label, default, cb)
+    local on = default or false
+    local row = New("Frame",{Size=UDim2.new(1,0,0,35),BackgroundColor3=Theme.Secondary,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#page:GetChildren(),Parent=page})
+    Corner(8,row); Stroke(Theme.BorderDim,1,row)
+    New("TextLabel",{Size=UDim2.new(1,-50,1,0),Position=UDim2.new(0,10,0,0),BackgroundTransparency=1,Text=label,FontFace=Fnt,TextSize=12,TextColor3=Theme.Text,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+    local track = New("Frame",{Size=UDim2.new(0,34,0,18),Position=UDim2.new(1,-44,0.5,-9),BackgroundColor3=on and Theme.ToggleON or Theme.ToggleOFF,BorderSizePixel=0,Parent=row})
+    Corner(99,track)
+    local knob = New("Frame",{Size=UDim2.new(0,13,0,13),Position=on and UDim2.new(1,-16,0.5,-6) or UDim2.new(0,3,0.5,-6),BackgroundColor3=Theme.Text,BorderSizePixel=0,Parent=track})
+    Corner(99,knob)
+    local btn = New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=row})
+    btn.MouseButton1Click:Connect(function()
+        on=not on
+        Tween(track,0.18,{BackgroundColor3=on and Theme.ToggleON or Theme.ToggleOFF})
+        Tween(knob,0.18,{Position=on and UDim2.new(1,-16,0.5,-6) or UDim2.new(0,3,0.5,-6)})
+        if cb then cb(on) end
+    end)
+    return row
+end
+
+local function Slider(page, label, min, max, default, cb)
+    local val = default or min
+    local row = New("Frame",{Size=UDim2.new(1,0,0,48),BackgroundColor3=Theme.Secondary,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#page:GetChildren(),Parent=page})
+    Corner(8,row); Stroke(Theme.BorderDim,1,row)
+    local lbl = New("TextLabel",{Size=UDim2.new(1,-10,0,18),Position=UDim2.new(0,10,0,4),BackgroundTransparency=1,Text=label..": "..val,FontFace=Fnt,TextSize=12,TextColor3=Theme.Text,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+    local bg = New("Frame",{Size=UDim2.new(1,-20,0,5),Position=UDim2.new(0,10,0,30),BackgroundColor3=Theme.ToggleOFF,BorderSizePixel=0,Parent=row})
+    Corner(99,bg)
+    local fill = New("Frame",{Size=UDim2.new((val-min)/(max-min),0,1,0),BackgroundColor3=Theme.Accent,BorderSizePixel=0,Parent=bg})
+    Corner(99,fill)
+    local knob = New("Frame",{Size=UDim2.new(0,13,0,13),Position=UDim2.new((val-min)/(max-min),0,0.5,-6),AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=Theme.AccentBright,BorderSizePixel=0,Parent=bg})
+    Corner(99,knob)
+    local dragging=false
+    knob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then
+            local rel=math.clamp((i.Position.X-bg.AbsolutePosition.X)/bg.AbsoluteSize.X,0,1)
+            val=math.floor(min+(max-min)*rel)
+            lbl.Text=label..": "..val
+            Tween(fill,0.05,{Size=UDim2.new(rel,0,1,0)})
+            Tween(knob,0.05,{Position=UDim2.new(rel,0,0.5,-6)})
+            if cb then cb(val) end
+        end
+    end)
+end
+
+local function Button(page, label, cb)
+    local b = New("TextButton",{Size=UDim2.new(1,0,0,34),BackgroundColor3=Theme.Accent,BackgroundTransparency=0.35,BorderSizePixel=0,Text=label,FontFace=Fnt,TextSize=12,TextColor3=Theme.Text,AutoButtonColor=false,LayoutOrder=#page:GetChildren(),Parent=page})
+    Corner(8,b); Stroke(Theme.Border,1,b)
+    b.MouseEnter:Connect(function() Tween(b,0.15,{BackgroundTransparency=0}) end)
+    b.MouseLeave:Connect(function() Tween(b,0.15,{BackgroundTransparency=0.35}) end)
+    b.MouseButton1Click:Connect(function()
+        Tween(b,0.07,{Size=UDim2.new(0.97,0,0,32)})
+        task.wait(0.07)
+        Tween(b,0.07,{Size=UDim2.new(1,0,0,34)})
+        if cb then cb() end
+    end)
+end
+
+local function Dropdown(page, label, opts, cb)
+    local open=false; local sel=opts[1]
+    local cont = New("Frame",{Size=UDim2.new(1,0,0,34),BackgroundColor3=Theme.Secondary,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#page:GetChildren(),ClipsDescendants=true,Parent=page})
+    Corner(8,cont); Stroke(Theme.BorderDim,1,cont)
+    local hdr = New("TextButton",{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,Text="",AutoButtonColor=false,Parent=cont})
+    local lbl = New("TextLabel",{Size=UDim2.new(1,-30,1,0),Position=UDim2.new(0,10,0,0),BackgroundTransparency=1,Text=label..": "..sel,FontFace=Fnt,TextSize=12,TextColor3=Theme.Text,TextXAlignment=Enum.TextXAlignment.Left,Parent=hdr})
+    local arr = New("TextLabel",{Size=UDim2.new(0,24,1,0),Position=UDim2.new(1,-28,0,0),BackgroundTransparency=1,Text="▾",FontFace=FntBold,TextSize=14,TextColor3=Theme.Accent,TextXAlignment=Enum.TextXAlignment.Center,Parent=hdr})
+    local listF = New("Frame",{Size=UDim2.new(1,0,0,#opts*28),Position=UDim2.new(0,0,0,34),BackgroundTransparency=1,Parent=cont})
+    New("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Parent=listF})
+    for _,opt in ipairs(opts) do
+        local ob = New("TextButton",{Size=UDim2.new(1,0,0,28),BackgroundColor3=Theme.ToggleOFF,BackgroundTransparency=0.3,BorderSizePixel=0,Text=opt,FontFace=Fnt,TextSize=11,TextColor3=Theme.TextDim,AutoButtonColor=false,Parent=listF})
+        ob.MouseButton1Click:Connect(function()
+            sel=opt; lbl.Text=label..": "..sel
+            open=false; Tween(cont,0.2,{Size=UDim2.new(1,0,0,34)}); arr.Text="▾"
+            if cb then cb(opt) end
+        end)
+    end
+    hdr.MouseButton1Click:Connect(function()
+        open=not open
+        Tween(cont,0.2,{Size=UDim2.new(1,0,0,open and 34+#opts*28 or 34)})
+        arr.Text=open and "▴" or "▾"
+    end)
+end
+
+local function InfoBox(page, text)
+    local f = New("Frame",{Size=UDim2.new(1,0,0,54),BackgroundColor3=Theme.Secondary,BackgroundTransparency=0.6,BorderSizePixel=0,LayoutOrder=#page:GetChildren(),Parent=page})
+    Corner(8,f); Stroke(Theme.BorderDim,1,f)
+    New("TextLabel",{Size=UDim2.new(1,-12,1,-8),Position=UDim2.new(0,8,0,4),BackgroundTransparency=1,Text=text,FontFace=Fnt,TextSize=11,TextColor3=Theme.TextDim,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,Parent=f})
+end
+
+-- ============================================================
+-- PLAYER TAB
+-- ============================================================
+local PP = TabPages["Player"]
+Section(PP,"⚡ Movement")
+
+Toggle(PP,"Speed Hack",false,function(on)
+    if on then
+        Connections["speed"]=RunService.Heartbeat:Connect(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                LocalPlayer.Character.Humanoid.WalkSpeed=State.Speed or 50
+            end
+        end)
+    else
+        if Connections["speed"] then Connections["speed"]:Disconnect(); Connections["speed"]=nil end
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed=16
+        end
+    end
+end)
+
+Slider(PP,"Walk Speed",16,500,50,function(v) State.Speed=v end)
+
+Toggle(PP,"Infinite Jump",false,function(on)
+    if on then
+        Connections["ijump"]=UserInputService.JumpRequest:Connect(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    else
+        if Connections["ijump"] then Connections["ijump"]:Disconnect(); Connections["ijump"]=nil end
+    end
+end)
+
+Toggle(PP,"No Clip",false,function(on)
+    if on then
+        Connections["noclip"]=RunService.Stepped:Connect(function()
+            if LocalPlayer.Character then
+                for _,p in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide=false end
+                end
+            end
+        end)
+    else
+        if Connections["noclip"] then Connections["noclip"]:Disconnect(); Connections["noclip"]=nil end
+    end
+end)
+
+Toggle(PP,"Anti AFK",false,function(on)
+    if on then
+        Connections["afk"]=RunService.Heartbeat:Connect(function()
+            pcall(function() LocalPlayer:Move(Vector3.new(0,0,0)) end)
+        end)
+    else
+        if Connections["afk"] then Connections["afk"]:Disconnect(); Connections["afk"]=nil end
+    end
+end)
+
+Section(PP,"🛡️ Character")
+
+Toggle(PP,"God Mode (FE)",false,function(on)
+    if LocalPlayer.Character then
+        local hum=LocalPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            if on then
+                hum.MaxHealth=math.huge; hum.Health=math.huge
+                Connections["god"]=hum.HealthChanged:Connect(function() hum.Health=math.huge end)
+            else
+                if Connections["god"] then Connections["god"]:Disconnect(); Connections["god"]=nil end
+                hum.MaxHealth=100; hum.Health=100
+            end
+        end
+    end
+end)
+
+Toggle(PP,"Invisible (FE)",false,function(on)
+    if LocalPlayer.Character then
+        for _,p in pairs(LocalPlayer.Character:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name~="HumanoidRootPart" then
+                p.LocalTransparencyModifier=on and 1 or 0
+            end
+        end
+    end
+end)
+
+Toggle(PP,"Freeze Self",false,function(on)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.Anchored=on
+    end
+end)
+
+Button(PP,"Reset Character",function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.Health=0
+    end
+end)
+
+Button(PP,"Rejoin Game",function()
+    game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+end)
+
+-- ============================================================
+-- FLY TAB
+-- ============================================================
+local FP = TabPages["Fly"]
+
+local function StopFly()
+    FlyActive=false
+    if FlyConn then FlyConn:Disconnect(); FlyConn=nil end
+    if FlyBV then FlyBV:Destroy(); FlyBV=nil end
+    if FlyBG then FlyBG:Destroy(); FlyBG=nil end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.PlatformStand=false
+    end
+end
+
+local function StartFly(mode)
+    StopFly(); FlyActive=true
+    local char=LocalPlayer.Character; if not char then return end
+    local hrp=char:FindFirstChild("HumanoidRootPart")
+    local hum=char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
+    hum.PlatformStand=true
+    FlyBV=Instance.new("BodyVelocity"); FlyBV.MaxForce=Vector3.new(1e9,1e9,1e9); FlyBV.Velocity=Vector3.zero; FlyBV.Parent=hrp
+    FlyBG=Instance.new("BodyGyro"); FlyBG.MaxTorque=Vector3.new(1e9,1e9,1e9); FlyBG.D=100; FlyBG.Parent=hrp
+
+    FlyConn=RunService.Heartbeat:Connect(function()
+        if not FlyActive or not hrp or not hrp.Parent then StopFly(); return end
+        local spd=State.FlySpd or 50
+        local vel=Vector3.zero
+        local W=UserInputService:IsKeyDown(Enum.KeyCode.W)
+        local S=UserInputService:IsKeyDown(Enum.KeyCode.S)
+        local A=UserInputService:IsKeyDown(Enum.KeyCode.A)
+        local D=UserInputService:IsKeyDown(Enum.KeyCode.D)
+        local UP=UserInputService:IsKeyDown(Enum.KeyCode.Space)
+        local DN=UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+
+        if mode=="Normal" then
+            if W then vel=vel+Camera.CFrame.LookVector*spd end
+            if S then vel=vel-Camera.CFrame.LookVector*spd end
+            if A then vel=vel-Camera.CFrame.RightVector*spd end
+            if D then vel=vel+Camera.CFrame.RightVector*spd end
+            if UP then vel=vel+Vector3.new(0,spd,0) end
+            if DN then vel=vel-Vector3.new(0,spd,0) end
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Superman" then
+            if W then vel=vel+Camera.CFrame.LookVector*spd end
+            if S then vel=vel-Camera.CFrame.LookVector*spd end
+            if A then vel=vel-Camera.CFrame.RightVector*spd end
+            if D then vel=vel+Camera.CFrame.RightVector*spd end
+            if UP then vel=vel+Vector3.new(0,spd,0) end
+            if DN then vel=vel-Vector3.new(0,spd,0) end
+            FlyBV.Velocity=vel
+            local flat=Vector3.new(Camera.CFrame.LookVector.X,0,Camera.CFrame.LookVector.Z)
+            if flat.Magnitude>0 then flat=flat.Unit end
+            FlyBG.CFrame=CFrame.new(hrp.Position,hrp.Position+flat)*CFrame.Angles(-math.rad(80),0,0)
+
+        elseif mode=="Speed Fly" then
+            spd=spd*3
+            if W then vel=vel+Camera.CFrame.LookVector*spd end
+            if S then vel=vel-Camera.CFrame.LookVector*spd end
+            if A then vel=vel-Camera.CFrame.RightVector*spd end
+            if D then vel=vel+Camera.CFrame.RightVector*spd end
+            if UP then vel=vel+Vector3.new(0,spd,0) end
+            if DN then vel=vel-Vector3.new(0,spd,0) end
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Noclip Fly" then
+            if W then vel=vel+Camera.CFrame.LookVector*spd end
+            if S then vel=vel-Camera.CFrame.LookVector*spd end
+            if A then vel=vel-Camera.CFrame.RightVector*spd end
+            if D then vel=vel+Camera.CFrame.RightVector*spd end
+            if UP then vel=vel+Vector3.new(0,spd,0) end
+            if DN then vel=vel-Vector3.new(0,spd,0) end
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+            for _,p in pairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide=false end
+            end
+
+        elseif mode=="Hover" then
+            vel=Vector3.new(0,math.sin(tick()*2)*3,0)
+            if W then vel=vel+Camera.CFrame.LookVector*(spd*0.6) end
+            if S then vel=vel-Camera.CFrame.LookVector*(spd*0.6) end
+            if A then vel=vel-Camera.CFrame.RightVector*(spd*0.6) end
+            if D then vel=vel+Camera.CFrame.RightVector*(spd*0.6) end
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Glide" then
+            if W then vel=vel+Camera.CFrame.LookVector*(spd*0.5) end
+            if S then vel=vel-Camera.CFrame.LookVector*(spd*0.3) end
+            if A then vel=vel-Camera.CFrame.RightVector*(spd*0.4) end
+            if D then vel=vel+Camera.CFrame.RightVector*(spd*0.4) end
+            vel=vel+Vector3.new(0,-4,0)
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Stealth Fly" then
+            for _,p in pairs(char:GetDescendants()) do
+                if p:IsA("BasePart") and p.Name~="HumanoidRootPart" then p.LocalTransparencyModifier=1 end
+            end
+            if W then vel=vel+Camera.CFrame.LookVector*spd end
+            if S then vel=vel-Camera.CFrame.LookVector*spd end
+            if A then vel=vel-Camera.CFrame.RightVector*spd end
+            if D then vel=vel+Camera.CFrame.RightVector*spd end
+            if UP then vel=vel+Vector3.new(0,spd,0) end
+            if DN then vel=vel-Vector3.new(0,spd,0) end
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Orbit" then
+            -- Orbit around a fixed point
+            State.OrbitAngle=(State.OrbitAngle or 0)+0.02
+            local radius=spd*0.5
+            local cx=math.cos(State.OrbitAngle)*radius
+            local cz=math.sin(State.OrbitAngle)*radius
+            FlyBV.Velocity=Vector3.new(cx,0,cz)
+            FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Rocket" then
+            -- Straight up fast
+            vel=Vector3.new(0,spd*4,0)
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+
+        elseif mode=="Swim Fly" then
+            -- Swim-like movement
+            local t=tick()
+            if W then vel=vel+Camera.CFrame.LookVector*spd end
+            if S then vel=vel-Camera.CFrame.LookVector*spd end
+            vel=vel+Vector3.new(0,math.sin(t*4)*8,0)
+            FlyBV.Velocity=vel; FlyBG.CFrame=Camera.CFrame
+        end
+    end)
+end
+
+Section(FP,"✈️ Fly Mode")
+Dropdown(FP,"Mode",{"Normal","Superman","Speed Fly","Noclip Fly","Hover","Glide","Stealth Fly","Orbit","Rocket","Swim Fly"},function(v)
+    FlyMode=v
+    if FlyActive then StartFly(FlyMode) end
+end)
+Slider(FP,"Fly Speed",10,500,50,function(v) State.FlySpd=v end)
+Toggle(FP,"Fly Enabled",false,function(on)
+    if on then StartFly(FlyMode) else StopFly() end
+end)
+
+Section(FP,"📖 Fly Modes Guide")
+InfoBox(FP,"Normal — Free fly all directions\nSuperman — Tilts body forward like Superman\nSpeed Fly — 3x faster fly")
+InfoBox(FP,"Noclip Fly — Fly through walls\nHover — Bobs up and down\nGlide — Slow drift with gravity")
+InfoBox(FP,"Stealth Fly — Invisible while flying\nOrbit — Circles a point\nRocket — Shoots straight up\nSwim Fly — Wave-like swim motion")
+InfoBox(FP,"Controls: W/A/S/D = Move  SPACE = Up  CTRL = Down")
+
+-- ============================================================
+-- COMBAT TAB
+-- ============================================================
+local CP = TabPages["Combat"]
+Section(CP,"🎯 Aim")
+
+Toggle(CP,"Silent Aim",false,function(on)
+    State.SilentAim=on
+    if on then
+        Connections["saim"]=UserInputService.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 then
+                local target=nil; local closest=State.AimbotFOV or 150
+                for _,p in pairs(Players:GetPlayers()) do
+                    if p~=LocalPlayer and p.Character then
+                        local hrp=p.Character:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            local sp,vis=Camera:WorldToViewportPoint(hrp.Position)
+                            if vis then
+                                local dist=(Vector2.new(sp.X,sp.Y)-Vector2.new(Mouse.X,Mouse.Y)).Magnitude
+                                if dist<closest then closest=dist; target=hrp end
+                            end
+                        end
+                    end
+                end
+                if target then Mouse.Hit=CFrame.new(target.Position) end
+            end
+        end)
+    else
+        if Connections["saim"] then Connections["saim"]:Disconnect(); Connections["saim"]=nil end
+    end
+end)
+
+Toggle(CP,"Aimbot (Lock-On)",false,function(on)
+    State.Aimbot=on
+    if on then
+        Connections["abot"]=RunService.RenderStepped:Connect(function()
+            local target=nil; local closest=State.AimbotFOV or 150
+            for _,p in pairs(Players:GetPlayers()) do
+                if p~=LocalPlayer and p.Character then
+                    local hrp=p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local sp,vis=Camera:WorldToViewportPoint(hrp.Position)
+                        if vis then
+                            local dist=(Vector2.new(sp.X,sp.Y)-Vector2.new(Mouse.ViewSizeX/2,Mouse.ViewSizeY/2)).Magnitude
+                            if dist<closest then closest=dist; target=hrp end
+                        end
+                    end
+                end
+            end
+            if target then
+                Camera.CFrame=CFrame.new(Camera.CFrame.Position,target.Position)
+            end
+        end)
+    else
+        if Connections["abot"] then Connections["abot"]:Disconnect(); Connections["abot"]=nil end
+    end
+end)
+
+Slider(CP,"Aim FOV",10,600,150,function(v) State.AimbotFOV=v end)
+Slider(CP,"Hit Chance %",1,100,100,function(v) State.HitChance=v end)
+
+Section(CP,"⚔️ Combat")
+
+Toggle(CP,"Auto Parry",false,function(on)
+    if on then
+        Connections["parry"]=RunService.Heartbeat:Connect(function()
+            local remote=LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Parry",true)
+            if remote and remote:IsA("RemoteEvent") then pcall(function() remote:FireServer() end) end
+        end)
+    else
+        if Connections["parry"] then Connections["parry"]:Disconnect(); Connections["parry"]=nil end
+    end
+end)
+
+Toggle(CP,"Kill Aura (FE)",false,function(on)
+    if on then
+        Connections["kaura"]=RunService.Heartbeat:Connect(function()
+            for _,p in pairs(Players:GetPlayers()) do
+                if p~=LocalPlayer and p.Character then
+                    local hum=p.Character:FindFirstChild("Humanoid")
+                    if hum then
+                        pcall(function() hum.Health=0 end)
+                    end
+                end
+            end
+        end)
+    else
+        if Connections["kaura"] then Connections["kaura"]:Disconnect(); Connections["kaura"]=nil end
+    end
+end)
+
+Button(CP,"Kill Nearest Player",function()
+    local closest,cdist=nil,math.huge
+    if not LocalPlayer.Character then return end
+    local myPos=LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position
+    if not myPos then return end
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local d=(p.Character.HumanoidRootPart.Position-myPos).Magnitude
+            if d<cdist then cdist=d; closest=p end
+        end
+    end
+    if closest and closest.Character and closest.Character:FindFirstChild("Humanoid") then
+        pcall(function() closest.Character.Humanoid.Health=0 end)
+    end
+end)
+
+-- ============================================================
+-- VISUALS TAB
+-- ============================================================
+local VP = TabPages["Visuals"]
+Section(VP,"👁️ ESP")
+
+local function RefreshESP()
+    for _,v in pairs(ESPFolder:GetChildren()) do v:Destroy() end
+    if not State.PlayerESP and not State.BoxESP and not State.NameESP then return end
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character then
+            local hrp=p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if State.NameESP then
+                    local bb=Instance.new("BillboardGui"); bb.Size=UDim2.new(0,120,0,40); bb.StudsOffset=Vector3.new(0,3,0); bb.Adornee=hrp; bb.AlwaysOnTop=true; bb.Parent=ESPFolder
+                    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1; lbl.Text=p.Name; lbl.TextColor3=Theme.AccentBright; lbl.FontFace=FntBold; lbl.TextSize=14; lbl.Parent=bb
+                end
+                if State.BoxESP then
+                    local sb=Instance.new("SelectionBox"); sb.Adornee=p.Character; sb.Color3=Theme.Accent; sb.LineThickness=0.05; sb.SurfaceTransparency=0.85; sb.Parent=ESPFolder
+                end
+            end
+        end
+    end
+end
+
+Toggle(VP,"Player ESP",false,function(on) State.PlayerESP=on; RefreshESP() end)
+Toggle(VP,"Box ESP",false,function(on) State.BoxESP=on; RefreshESP() end)
+Toggle(VP,"Name ESP",false,function(on) State.NameESP=on; RefreshESP() end)
+
+RunService.Heartbeat:Connect(function()
+    if State.PlayerESP or State.BoxESP or State.NameESP then RefreshESP() end
+end)
+
+Section(VP,"🌟 Effects")
+
+Toggle(VP,"Fullbright",false,function(on)
+    local L=game:GetService("Lighting")
+    if on then State._lb=L.Brightness; State._la=L.Ambient; L.Brightness=2; L.Ambient=Color3.fromRGB(178,178,178)
+    else L.Brightness=State._lb or 1; L.Ambient=State._la or Color3.fromRGB(127,127,127) end
+end)
+
+Toggle(VP,"Rainbow Character",false,function(on)
+    if on then
+        Connections["rainbow"]=RunService.Heartbeat:Connect(function()
+            if LocalPlayer.Character then
+                local col=Color3.fromHSV((tick()*0.25)%1,1,1)
+                for _,p in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then p.Color=col end
+                end
+            end
+        end)
+    else
+        if Connections["rainbow"] then Connections["rainbow"]:Disconnect(); Connections["rainbow"]=nil end
+    end
+end)
+
+Toggle(VP,"Purple Chams",false,function(on)
+    if LocalPlayer.Character then
+        for _,p in pairs(LocalPlayer.Character:GetDescendants()) do
+            if p:IsA("BasePart") then
+                if on then p.Color=Theme.Accent; p.Material=Enum.Material.Neon
+                else p.Material=Enum.Material.SmoothPlastic end
+            end
+        end
+    end
+end)
+
+Toggle(VP,"Neon Glow",false,function(on)
+    if LocalPlayer.Character then
+        for _,p in pairs(LocalPlayer.Character:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.Material=on and Enum.Material.Neon or Enum.Material.SmoothPlastic
+            end
+        end
+    end
+end)
+
+-- ============================================================
+-- WORLD TAB
+-- ============================================================
+local WP = TabPages["World"]
+Section(WP,"🌍 Players")
+
+Toggle(WP,"Freeze All Players",false,function(on)
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character then
+            for _,part in pairs(p.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.Anchored=on end
+            end
+        end
+    end
+end)
+
+Button(WP,"Teleport to Random Player",function()
+    local list={}
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then table.insert(list,p) end
+    end
+    if #list>0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame=list[math.random(1,#list)].Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
+    end
+end)
+
+Button(WP,"Teleport to Nearest Player",function()
+    local best,bd=nil,math.huge
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    local mp=LocalPlayer.Character.HumanoidRootPart.Position
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local d=(p.Character.HumanoidRootPart.Position-mp).Magnitude
+            if d<bd then bd=d; best=p end
+        end
+    end
+    if best then LocalPlayer.Character.HumanoidRootPart.CFrame=best.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0) end
+end)
+
+Button(WP,"Teleport All to Me",function()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    local cf=LocalPlayer.Character.HumanoidRootPart.CFrame
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            p.Character.HumanoidRootPart.CFrame=cf*CFrame.new(math.random(-6,6),0,math.random(-6,6))
+        end
+    end
+end)
+
+Section(WP,"🔧 Physics")
+
+Toggle(WP,"Low Gravity",false,function(on) Workspace.Gravity=on and 20 or 196.2 end)
+Toggle(WP,"Zero Gravity",false,function(on) Workspace.Gravity=on and 0.1 or 196.2 end)
+Toggle(WP,"High Gravity",false,function(on) Workspace.Gravity=on and 600 or 196.2 end)
+
+Button(WP,"Clear Particles (Local)",function()
+    for _,v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+            pcall(function() v.Enabled=false end)
+        end
+    end
+end)
+
+-- ============================================================
+-- MISC TAB
+-- ============================================================
+local MP = TabPages["Misc"]
+Section(MP,"💬 Chat")
+
+Toggle(MP,"Chat Spam",false,function(on)
+    State.SpamOn=on
+    if on then
+        task.spawn(function()
+            while State.SpamOn do
+                pcall(function()
+                    game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents",true):FindFirstChild("SayMessageRequest"):FireServer(State.SpamText,"All")
+                end)
+                task.wait(0.8)
+            end
+        end)
+    end
+end)
+
+local spamMsgs={"Ash Hub 🔥","primeash","🟣 Purple Gang","FE no cap","Ash Hub is elite","primeash67 W"}
+Button(MP,"Cycle Spam Message",function()
+    State.SpamIdx=(State.SpamIdx or 0)+1
+    if State.SpamIdx>#spamMsgs then State.SpamIdx=1 end
+    State.SpamText=spamMsgs[State.SpamIdx]
+end)
+
+Section(MP,"🚀 Performance")
+
+Toggle(MP,"FPS Boost",false,function(on)
+    local L=game:GetService("Lighting")
+    if on then
+        L.GlobalShadows=false; L.FogEnd=1e9
+        for _,v in pairs(Workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+                pcall(function() v.Enabled=false end)
+            end
+        end
+    else
+        L.GlobalShadows=true
+    end
+end)
+
+Toggle(MP,"Auto Rejoin on Kick",false,function(on)
+    State.AutoRejoin=on
+    if on then
+        Connections["rejoin"]=LocalPlayer.OnTeleport:Connect(function(state)
+            if state==Enum.TeleportState.Failed and State.AutoRejoin then
+                game:GetService("TeleportService"):Teleport(game.PlaceId,LocalPlayer)
+            end
+        end)
+    else
+        if Connections["rejoin"] then Connections["rejoin"]:Disconnect(); Connections["rejoin"]=nil end
+    end
+end)
+
+Section(MP,"ℹ️ Info")
+InfoBox(MP,"Ash Hub v2.0 | Made by primeash\nKey: primeash | GitHub: primeash67-ctrl\nPress RightShift to show/hide GUI")
+
+Button(MP,"Copy Script Link",function()
+    setclipboard("https://raw.githubusercontent.com/primeash67-ctrl/FDDDGFDF/refs/heads/main/CV")
+end)
+
+-- ============================================================
+-- DRAG
+-- ============================================================
+local dragging,dragStart,startPos=false,nil,nil
+TopBar.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        dragging=true; dragStart=i.Position; startPos=Win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then
+        local d=i.Position-dragStart
+        Win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+end)
+
+-- Toggle visibility
+UserInputService.InputBegan:Connect(function(i,gp)
+    if not gp and i.KeyCode==Enum.KeyCode.RightShift then
+        Win.Visible=not Win.Visible
+    end
+end)
+
+-- Start on Player tab
+SwitchTab("Player")
+print("✅ Ash Hub loaded! RightShift = show/hide")
+
