@@ -32,8 +32,9 @@ local keyOK=false; local ok,rem=keyStillValid(); if ok then keyOK=true end
 local loadMain
 -- TAG SYSTEM
 local TAGS={
-    ["Ancient_Briar"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
+    ["unicornman_27"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
     ["mrnoashman"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
+    ["Ancient_Briar"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
 }
 local GLITCH_CHARS={"#","@","$","%","&","!","?","~","*","^","/","\\","<",">","|","0","1","x","z"}
 local function glitchChar() return GLITCH_CHARS[math.random(1,#GLITCH_CHARS)] end
@@ -494,7 +495,7 @@ local function buildGUI()
             gSt.Text="Tagged everyone!"; gSt.TextColor3=T.OK
         end)
         makeButton(TP,"Revoke ALL Tags",function()
-            for _,p in pairs(PL:GetPlayers()) do if p.Name~="unicornman_27" and p.Name~="mrnoashman" then TAGS[p.Name]=nil; if p.Character then local h=p.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end end end end end
+            for _,p in pairs(PL:GetPlayers()) do if p.Name~="unicornman_27" and p.Name~="mrnoashman" and p.Name~="Ancient_Briar" then TAGS[p.Name]=nil; if p.Character then local h=p.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end end end end end
             gSt.Text="All tags revoked!"; gSt.TextColor3=T.ERR
         end)
     end
