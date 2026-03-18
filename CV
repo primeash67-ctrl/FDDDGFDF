@@ -173,19 +173,60 @@ createTag=function(plr,char)
     local cfg=TAGS[plr.Name]; if not cfg then return end
     local head=char:FindFirstChild("Head") or char:WaitForChild("Head",5); if not head then return end
     local ex=head:FindFirstChild("AshTag"); if ex then ex:Destroy() end
-    local bb=N("BillboardGui",{Name="AshTag",Adornee=head,Size=UDim2.new(0,260,0,46),StudsOffset=Vector3.new(0,3.2,0),AlwaysOnTop=true,Parent=head})
+
+    -- Tag size: wider if image present
+    local hasImg = cfg.imageId and cfg.imageId ~= ""
+    local tagW = cfg.tagW or 260
+    local tagH = cfg.tagH or 46
+    -- If image, make taller to fit both image and text
+    if hasImg then tagH = cfg.tagH or 80 end
+
+    local bb=N("BillboardGui",{Name="AshTag",Adornee=head,Size=UDim2.new(0,tagW,0,tagH),StudsOffset=Vector3.new(0,3.2,0),AlwaysOnTop=true,Parent=head})
     local cont=N("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,Parent=bb})
     COR(12,cont)
     local ts=STR(cfg.stroke,2.5,cont)
-    local lbl=N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextScaled=true,TextXAlignment=Enum.TextXAlignment.Center,TextYAlignment=Enum.TextYAlignment.Center,TextColor3=cfg.color,TextStrokeTransparency=0.35,TextStrokeColor3=Color3.new(0,0,0),Parent=cont})
-    glitchLoop(lbl, function() return cfg.text end)
+
+    if hasImg then
+        -- Image on left, text on right layout
+        local imgSize = cfg.imgSize or 0.45 -- fraction of width
+        local img=N("ImageLabel",{
+            Size=UDim2.new(imgSize,-4,1,-8),
+            Position=UDim2.new(0,4,0,4),
+            BackgroundTransparency=1,
+            Image="rbxassetid://"..tostring(cfg.imageId),
+            ScaleType=Enum.ScaleType.Fit,
+            ZIndex=2,
+            Parent=cont
+        })
+        local lbl=N("TextLabel",{
+            Size=UDim2.new(1-imgSize,-4,1,-8),
+            Position=UDim2.new(imgSize,0,0,4),
+            BackgroundTransparency=1,
+            Font=Enum.Font.GothamBold,
+            TextScaled=true,
+            TextXAlignment=Enum.TextXAlignment.Center,
+            TextYAlignment=Enum.TextYAlignment.Center,
+            TextColor3=cfg.color,
+            TextStrokeTransparency=0.35,
+            TextStrokeColor3=Color3.new(0,0,0),
+            ZIndex=2,
+            Parent=cont
+        })
+        glitchLoop(lbl, function() return cfg.text end)
+        hookDist(bb,lbl)
+    else
+        -- Text only (original layout)
+        local lbl=N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextScaled=true,TextXAlignment=Enum.TextXAlignment.Center,TextYAlignment=Enum.TextYAlignment.Center,TextColor3=cfg.color,TextStrokeTransparency=0.35,TextStrokeColor3=Color3.new(0,0,0),Parent=cont})
+        glitchLoop(lbl, function() return cfg.text end)
+        hookDist(bb,lbl)
+    end
+
     if cfg.pulse then task.spawn(function() while bb.Parent do TW(ts,0.8,{Color=Color3.fromRGB(185,120,255)}); task.wait(0.8); TW(ts,0.8,{Color=cfg.stroke}); task.wait(0.8) end end) end
     local cl=N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=5,Parent=cont})
     cl.MouseButton1Click:Connect(function()
         local mc=LP.Character or LP.CharacterAdded:Wait(); local mh=mc:FindFirstChild("HumanoidRootPart"); local th=char:FindFirstChild("HumanoidRootPart")
         if mh and th then TS:Create(mh,TweenInfo.new(0.25),{CFrame=th.CFrame*CFrame.new(0,0,-3)}):Play() end
     end)
-    hookDist(bb,lbl)
 end
 local function setupTag(p)
     if p.Character then task.spawn(function() task.wait(1); createTag(p,p.Character) end) end
@@ -448,6 +489,94 @@ local function buildGUI()
         local tcs={{"Purple",Color3.fromRGB(155,90,245)},{"White",Color3.fromRGB(255,255,255)},{"Yellow",Color3.fromRGB(255,220,0)},{"Red",Color3.fromRGB(255,60,60)},{"Green",Color3.fromRGB(0,255,100)},{"Cyan",Color3.fromRGB(0,220,255)},{"Pink",Color3.fromRGB(255,120,200)},{"Orange",Color3.fromRGB(255,140,0)}}
         local tcg=N("Frame",{Size=UDim2.new(1,0,0,math.ceil(#tcs/2)*38),BackgroundTransparency=1,LayoutOrder=#TP:GetChildren(),Parent=TP})
         for i,pair in ipairs(tcs) do local name,col=pair[1],pair[2]; local cb=N("TextButton",{Size=UDim2.new(0.49,0,0,34),Position=UDim2.new(((i-1)%2==0) and 0 or 0.51,0,0,math.floor((i-1)/2)*38),BackgroundColor3=col,BackgroundTransparency=0.15,BorderSizePixel=0,Text=name,FontFace=FN,TextSize=10,TextColor3=Color3.fromRGB(0,0,0),AutoButtonColor=false,Parent=tcg}); COR(8,cb); cb.MouseButton1Click:Connect(function() myCfg.color=col; pvL.TextColor3=col; if LP.Character then local h=LP.Character:FindFirstChild("Head"); if h then local bb2=h:FindFirstChild("AshTag"); if bb2 then local c2=bb2:FindFirstChildOfClass("Frame"); if c2 then local l2=c2:FindFirstChildOfClass("TextLabel"); if l2 then l2.TextColor3=col end end end end end end) end
+        makeSection(TP,"Image / Decal")
+
+        -- Image ID input
+        local imgRow=N("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=T.SEC,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#TP:GetChildren(),Parent=TP})
+        COR(8,imgRow); STR(T.BORD,1,imgRow)
+        N("TextLabel",{Size=UDim2.new(0,70,1,0),Position=UDim2.new(0,8,0,0),BackgroundTransparency=1,Text="Image ID",FontFace=FN,TextSize=11,TextColor3=T.DIM,TextXAlignment=Enum.TextXAlignment.Left,Parent=imgRow})
+        local imgBox=N("TextBox",{Size=UDim2.new(1,-138,1,-10),Position=UDim2.new(0,75,0,5),BackgroundColor3=T.TOFF,BackgroundTransparency=0.3,BorderSizePixel=0,PlaceholderText="rbxassetid or number...",PlaceholderColor3=T.DIM,Text=myCfg.imageId or "",FontFace=FN,TextSize=11,TextColor3=T.TXT,ClearTextOnFocus=false,Parent=imgRow})
+        COR(6,imgBox)
+        local imgApply=N("TextButton",{Size=UDim2.new(0,48,1,-10),Position=UDim2.new(1,-54,0,5),BackgroundColor3=T.AC,BackgroundTransparency=0.3,BorderSizePixel=0,Text="Apply",FontFace=FN,TextSize=11,TextColor3=T.TXT,AutoButtonColor=false,Parent=imgRow})
+        COR(6,imgApply)
+        imgApply.MouseButton1Click:Connect(function()
+            local v=imgBox.Text:gsub("%s+",""):gsub("rbxassetid://","")
+            myCfg.imageId = v~="" and v or nil
+            -- refresh tag
+            if LP.Character then local h=LP.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end; createTag(LP,LP.Character) end end
+        end)
+
+        -- Clear image button
+        local clearImgBtn=N("TextButton",{Size=UDim2.new(1,0,0,28),BackgroundColor3=T.ERR,BackgroundTransparency=0.5,BorderSizePixel=0,Text="Remove Image",FontFace=FN,TextSize=11,TextColor3=T.TXT,AutoButtonColor=false,LayoutOrder=#TP:GetChildren(),Parent=TP})
+        COR(8,clearImgBtn); STR(T.BORD,1,clearImgBtn)
+        clearImgBtn.MouseButton1Click:Connect(function()
+            myCfg.imageId=nil; imgBox.Text=""
+            if LP.Character then local h=LP.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end; createTag(LP,LP.Character) end end
+        end)
+
+        -- Image size slider (fraction of tag width for image)
+        local imgSzRow=N("Frame",{Size=UDim2.new(1,0,0,48),BackgroundColor3=T.SEC,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#TP:GetChildren(),Parent=TP})
+        COR(8,imgSzRow); STR(T.BORD,1,imgSzRow)
+        local imgSzLbl=N("TextLabel",{Size=UDim2.new(1,-10,0,18),Position=UDim2.new(0,10,0,4),BackgroundTransparency=1,Text="Image Size: 45%",FontFace=FN,TextSize=12,TextColor3=T.TXT,TextXAlignment=Enum.TextXAlignment.Left,Parent=imgSzRow})
+        local imgSzBg=N("Frame",{Size=UDim2.new(1,-20,0,5),Position=UDim2.new(0,10,0,30),BackgroundColor3=T.TOFF,BorderSizePixel=0,Parent=imgSzRow}); COR(99,imgSzBg)
+        local imgSzFill=N("Frame",{Size=UDim2.new(0.45,0,1,0),BackgroundColor3=T.AC,BorderSizePixel=0,Parent=imgSzBg}); COR(99,imgSzFill)
+        local imgSzKnob=N("Frame",{Size=UDim2.new(0,13,0,13),Position=UDim2.new(0.45,0,0.5,-6),AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=T.ACB,BorderSizePixel=0,Parent=imgSzBg}); COR(99,imgSzKnob)
+        local imgSzDrag=false
+        imgSzKnob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then imgSzDrag=true end end)
+        UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then imgSzDrag=false end end)
+        UIS.InputChanged:Connect(function(i)
+            if imgSzDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+                local rel=math.clamp((i.Position.X-imgSzBg.AbsolutePosition.X)/imgSzBg.AbsoluteSize.X,0.1,0.9)
+                imgSzLbl.Text="Image Size: "..math.floor(rel*100).."%"
+                TW(imgSzFill,0.05,{Size=UDim2.new(rel,0,1,0)}); TW(imgSzKnob,0.05,{Position=UDim2.new(rel,0,0.5,-6)})
+                myCfg.imgSize=rel
+                -- live refresh tag
+                if LP.Character then local h=LP.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end; createTag(LP,LP.Character) end end
+            end
+        end)
+
+        -- Tag box WIDTH slider
+        local tagWRow=N("Frame",{Size=UDim2.new(1,0,0,48),BackgroundColor3=T.SEC,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#TP:GetChildren(),Parent=TP})
+        COR(8,tagWRow); STR(T.BORD,1,tagWRow)
+        local tagWLbl=N("TextLabel",{Size=UDim2.new(1,-10,0,18),Position=UDim2.new(0,10,0,4),BackgroundTransparency=1,Text="Tag Width: 260px",FontFace=FN,TextSize=12,TextColor3=T.TXT,TextXAlignment=Enum.TextXAlignment.Left,Parent=tagWRow})
+        local tagWBg=N("Frame",{Size=UDim2.new(1,-20,0,5),Position=UDim2.new(0,10,0,30),BackgroundColor3=T.TOFF,BorderSizePixel=0,Parent=tagWRow}); COR(99,tagWBg)
+        local tagWFill=N("Frame",{Size=UDim2.new(0.43,0,1,0),BackgroundColor3=T.AC,BorderSizePixel=0,Parent=tagWBg}); COR(99,tagWFill)
+        local tagWKnob=N("Frame",{Size=UDim2.new(0,13,0,13),Position=UDim2.new(0.43,0,0.5,-6),AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=T.ACB,BorderSizePixel=0,Parent=tagWBg}); COR(99,tagWKnob)
+        local tagWDrag=false
+        tagWKnob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then tagWDrag=true end end)
+        UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then tagWDrag=false end end)
+        UIS.InputChanged:Connect(function(i)
+            if tagWDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+                local rel=math.clamp((i.Position.X-tagWBg.AbsolutePosition.X)/tagWBg.AbsoluteSize.X,0,1)
+                local w=math.floor(100+rel*500) -- 100 to 600px
+                tagWLbl.Text="Tag Width: "..w.."px"
+                TW(tagWFill,0.05,{Size=UDim2.new(rel,0,1,0)}); TW(tagWKnob,0.05,{Position=UDim2.new(rel,0,0.5,-6)})
+                myCfg.tagW=w
+                if LP.Character then local h=LP.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end; createTag(LP,LP.Character) end end
+            end
+        end)
+
+        -- Tag box HEIGHT slider
+        local tagHRow=N("Frame",{Size=UDim2.new(1,0,0,48),BackgroundColor3=T.SEC,BackgroundTransparency=0.55,BorderSizePixel=0,LayoutOrder=#TP:GetChildren(),Parent=TP})
+        COR(8,tagHRow); STR(T.BORD,1,tagHRow)
+        local tagHLbl=N("TextLabel",{Size=UDim2.new(1,-10,0,18),Position=UDim2.new(0,10,0,4),BackgroundTransparency=1,Text="Tag Height: 46px",FontFace=FN,TextSize=12,TextColor3=T.TXT,TextXAlignment=Enum.TextXAlignment.Left,Parent=tagHRow})
+        local tagHBg=N("Frame",{Size=UDim2.new(1,-20,0,5),Position=UDim2.new(0,10,0,30),BackgroundColor3=T.TOFF,BorderSizePixel=0,Parent=tagHRow}); COR(99,tagHBg)
+        local tagHFill=N("Frame",{Size=UDim2.new(0.23,0,1,0),BackgroundColor3=T.AC,BorderSizePixel=0,Parent=tagHBg}); COR(99,tagHFill)
+        local tagHKnob=N("Frame",{Size=UDim2.new(0,13,0,13),Position=UDim2.new(0.23,0,0.5,-6),AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=T.ACB,BorderSizePixel=0,Parent=tagHBg}); COR(99,tagHKnob)
+        local tagHDrag=false
+        tagHKnob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then tagHDrag=true end end)
+        UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then tagHDrag=false end end)
+        UIS.InputChanged:Connect(function(i)
+            if tagHDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+                local rel=math.clamp((i.Position.X-tagHBg.AbsolutePosition.X)/tagHBg.AbsoluteSize.X,0,1)
+                local h2=math.floor(30+rel*200) -- 30 to 230px
+                tagHLbl.Text="Tag Height: "..h2.."px"
+                TW(tagHFill,0.05,{Size=UDim2.new(rel,0,1,0)}); TW(tagHKnob,0.05,{Position=UDim2.new(rel,0,0.5,-6)})
+                myCfg.tagH=h2
+                if LP.Character then local h=LP.Character:FindFirstChild("Head"); if h then local ex=h:FindFirstChild("AshTag"); if ex then ex:Destroy() end; createTag(LP,LP.Character) end end
+            end
+        end)
+
         makeSection(TP,"Animation Style")
         local animStyles={"Glitch Loop","Type & Delete","Scramble","Bounce","Glitch Flash","Typewriter","Static"}
         local animGrid=N("Frame",{Size=UDim2.new(1,0,0,math.ceil(#animStyles/2)*38),BackgroundTransparency=1,LayoutOrder=#TP:GetChildren(),Parent=TP})
