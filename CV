@@ -32,7 +32,7 @@ local keyOK=false; local ok,rem=keyStillValid(); if ok then keyOK=true end
 local loadMain
 -- TAG SYSTEM
 local TAGS={
-    ["unicornman_27"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
+    ["Ancient_Briar"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
     ["mrnoashman"]={text="i am only kind",color=Color3.fromRGB(155,90,245),stroke=Color3.fromRGB(130,60,220),pulse=true},
 }
 local GLITCH_CHARS={"#","@","$","%","&","!","?","~","*","^","/","\\","<",">","|","0","1","x","z"}
